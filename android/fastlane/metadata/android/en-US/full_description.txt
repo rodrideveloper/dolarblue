@@ -1,0 +1,14 @@
+DolarBlue is the simplest and fastest app to check dollar rates in Argentina.
+
+Main features:
+💵 Real-time Dólar Blue and Dólar Oficial rates
+💶 Euro Blue and Euro Oficial rates
+📊 Percent gap between Blue and Official
+🧮 ARS ⇄ USD / EUR calculator
+📋 Locally saved conversion history
+📤 Share rates via WhatsApp, social media and more
+🌙 Dark UI optimized for daily use
+
+Data provided by Bluelytics.com.ar
+
+Keywords: dollar today, argentina dollar rate, blue dollar, official dollar, euro blue, dollar calculator, real time rate, dollar app, blue dollar today, exchange gap

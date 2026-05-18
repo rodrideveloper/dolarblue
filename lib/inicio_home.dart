@@ -1,11 +1,19 @@
 import 'package:dolarblue/api/dolar_api.dart';
 import 'package:dolarblue/model/conversion_history.dart';
 import 'package:dolarblue/model/dolar_model.dart';
+import 'package:dolarblue/chart_screen.dart';
+import 'package:dolarblue/services/historical_data_service.dart';
+import 'package:dolarblue/services/history_service.dart';
+import 'package:dolarblue/services/widget_service.dart';
+import 'package:dolarblue/settings_bottom_sheet.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:in_app_review/in_app_review.dart';
 import 'package:intl/intl.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class Inicio extends StatelessWidget {
   const Inicio({Key? key}) : super(key: key);
@@ -14,19 +22,24 @@ class Inicio extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
+      themeMode: ThemeMode.dark,
+      darkTheme: ThemeData.dark().copyWith(
+        scaffoldBackgroundColor: const Color.fromRGBO(53, 55, 88, 1),
         inputDecorationTheme: const InputDecorationTheme(
-            labelStyle: TextStyle(color: Colors.white),
-            enabledBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Colors.amberAccent),
-            ),
-            focusedBorder: UnderlineInputBorder(
-              borderSide: BorderSide(color: Colors.amberAccent),
-            ),
-            disabledBorder: UnderlineInputBorder(
-                borderSide: BorderSide(color: Colors.white38))),
+          labelStyle: TextStyle(color: Colors.white70),
+          enabledBorder: UnderlineInputBorder(
+            borderSide: BorderSide(color: Colors.amberAccent),
+          ),
+          focusedBorder: UnderlineInputBorder(
+            borderSide: BorderSide(color: Colors.amberAccent),
+          ),
+          disabledBorder: UnderlineInputBorder(
+            borderSide: BorderSide(color: Colors.white38),
+          ),
+        ),
         textTheme: const TextTheme(
-            titleMedium: TextStyle(color: Colors.white, fontSize: 20)),
+          titleMedium: TextStyle(color: Colors.white, fontSize: 20),
+        ),
       ),
       home: const Scaffold(
         backgroundColor: Colors.amberAccent,
@@ -48,38 +61,89 @@ class _HomeState extends State<Home> {
   final dolarc = TextEditingController();
   final df = DateFormat('dd-MM-yyyy hh:mm a');
 
-  // Datos de cotizaciones
   DolarModel? _dolarData;
   String _selectedDolar = 'blue';
   bool isEnabled = false;
   bool _isLoading = true;
+  bool _isOffline = false;
 
-  // Historial de conversiones
   final List<ConversionHistory> _history = [];
+  final HistoryService _historyService = HistoryService();
 
-  // Tipos de dólar disponibles
   final Map<String, String> _dolarTypes = {
     'blue': 'Dólar Blue',
     'oficial': 'Dólar Oficial',
+    'blue_euro': 'Euro Blue',
+    'oficial_euro': 'Euro Oficial',
   };
+
+
 
   @override
   void initState() {
     super.initState();
+    _loadHistory();
     _loadDolarData();
+    _maybeAskReview();
+  }
+
+  Future<void> _loadHistory() async {
+    final loaded = await _historyService.loadHistory();
+    if (mounted) {
+      setState(() {
+        _history.addAll(loaded);
+      });
+    }
+  }
+
+  Future<void> _saveHistory() async {
+    await _historyService.saveHistory(_history);
   }
 
   Future<void> _loadDolarData() async {
-    setState(() => _isLoading = true);
+    setState(() {
+      _isLoading = true;
+      _isOffline = false;
+    });
     try {
       final data = await DolarApi().fetchDolar();
+      await WidgetService.updateWidgetData();
+
+      // Guardar datos históricos
+      if (data.blue?.valueSell != null && data.oficial?.valueSell != null) {
+        await HistoricalDataService.saveDailyRate(
+          blueSell: data.blue!.valueSell!,
+          oficialSell: data.oficial!.valueSell!,
+          blueBuy: data.blue!.valueBuy ?? data.blue!.valueSell!,
+          oficialBuy: data.oficial!.valueBuy ?? data.oficial!.valueSell!,
+        );
+      }
+
       setState(() {
         _dolarData = data;
         _isLoading = false;
       });
     } catch (e) {
-      setState(() => _isLoading = false);
+      setState(() {
+        _isLoading = false;
+        _isOffline = true;
+      });
     }
+  }
+
+  Future<void> _maybeAskReview() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      const key = 'app_launches';
+      int launches = (prefs.getInt(key) ?? 0) + 1;
+      await prefs.setInt(key, launches);
+      if (launches == 5) {
+        final inAppReview = InAppReview.instance;
+        if (await inAppReview.isAvailable()) {
+          await inAppReview.requestReview();
+        }
+      }
+    } catch (_) {}
   }
 
   double? _getCurrentRate() {
@@ -89,6 +153,10 @@ class _HomeState extends State<Home> {
         return _dolarData!.blue?.valueBuy;
       case 'oficial':
         return _dolarData!.oficial?.valueBuy;
+      case 'blue_euro':
+        return _dolarData!.blueEuro?.valueBuy;
+      case 'oficial_euro':
+        return _dolarData!.oficialEuro?.valueBuy;
       default:
         return _dolarData!.blue?.valueBuy;
     }
@@ -101,10 +169,12 @@ class _HomeState extends State<Home> {
     final blueVenta = _dolarData!.blue?.valueSell ?? 0;
     final oficialCompra = _dolarData!.oficial?.valueBuy ?? 0;
     final oficialVenta = _dolarData!.oficial?.valueSell ?? 0;
-    final fecha = df.format(DateTime.parse(_dolarData!.lastUpdate!));
+    final fecha = _dolarData!.lastUpdate != null
+        ? df.format(DateTime.parse(_dolarData!.lastUpdate!))
+        : 'N/A';
 
     final mensaje = '''
-💵 *Cotización del Dólar* 💵
+🇦🇷💵 *Cotización del Dólar - DolarBlue* 💵🇦🇷
 
 🔵 *Dólar Blue*
    Compra: \$${blueCompra.toStringAsFixed(2)}
@@ -116,10 +186,11 @@ class _HomeState extends State<Home> {
 
 📅 Actualizado: $fecha
 
-📱 Enviado desde DolarBlue App
-''';
+📱 Descargá DolarBlue en Play Store
+'''
+        ;
 
-    Share.share(mensaje);
+    SharePlus.instance.share(ShareParams(text: mensaje));
   }
 
   void _cambioDivisa() {
@@ -140,7 +211,6 @@ class _HomeState extends State<Home> {
         pesoc.text = pesoAmount.toStringAsFixed(0);
       }
 
-      // Agregar al historial
       setState(() {
         _history.insert(
           0,
@@ -153,11 +223,11 @@ class _HomeState extends State<Home> {
             pesoToDolar: !isEnabled,
           ),
         );
-        // Mantener solo las últimas 10 conversiones
-        if (_history.length > 10) {
+        if (_history.length > 20) {
           _history.removeLast();
         }
       });
+      _saveHistory();
     } catch (e) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Ingresa un valor válido')),
@@ -165,22 +235,35 @@ class _HomeState extends State<Home> {
     }
   }
 
+  double _calcularBrecha() {
+    if (_dolarData?.oficial?.valueSell == null ||
+        _dolarData?.blue?.valueSell == null) {
+      return 0;
+    }
+    final oficial = _dolarData!.oficial!.valueSell!;
+    final blue = _dolarData!.blue!.valueSell!;
+    if (oficial == 0) return 0;
+    return ((blue - oficial) / oficial) * 100;
+  }
+
   @override
   Widget build(BuildContext context) {
     return SafeArea(
       bottom: false,
-      child: Column(
-        children: [
-          const SizedBox(height: 20),
-          // Header con logo y botón compartir
-          _buildHeader(),
-          const SizedBox(height: 10),
-          // Cotizaciones
-          _buildCotizaciones(),
-          const SizedBox(height: 20),
-          // Panel principal - expandido para llenar el resto
-          Expanded(child: _buildMainPanel()),
-        ],
+      child: RefreshIndicator(
+        onRefresh: _loadDolarData,
+        color: Colors.amberAccent,
+        backgroundColor: const Color.fromRGBO(53, 55, 88, 1),
+        child: Column(
+          children: [
+            const SizedBox(height: 20),
+            _buildHeader(),
+            const SizedBox(height: 10),
+            _buildCotizaciones(),
+            const SizedBox(height: 20),
+            Expanded(child: _buildMainPanel()),
+          ],
+        ),
       ),
     );
   }
@@ -206,10 +289,29 @@ class _HomeState extends State<Home> {
               ),
             ),
           ),
-          IconButton(
-            onPressed: _dolarData != null ? _compartirCotizacion : null,
-            icon: const Icon(Icons.share, color: Colors.black, size: 28),
-            tooltip: 'Compartir cotización',
+          Row(
+            children: [
+              IconButton(
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const ChartScreen()),
+                  );
+                },
+                icon: const Icon(Icons.show_chart, color: Colors.black, size: 28),
+                tooltip: 'Ver evolución',
+              ),
+              IconButton(
+                onPressed: _dolarData != null ? _compartirCotizacion : null,
+                icon: const Icon(Icons.share, color: Colors.black, size: 28),
+                tooltip: 'Compartir cotización',
+              ),
+              IconButton(
+                onPressed: _showSettings,
+                icon: const Icon(Icons.settings, color: Colors.black, size: 28),
+                tooltip: 'Configuración',
+              ),
+            ],
           ),
         ],
       ),
@@ -220,54 +322,120 @@ class _HomeState extends State<Home> {
     if (_isLoading) {
       return const Padding(
         padding: EdgeInsets.all(20),
-        child: CircularProgressIndicator(),
+        child: CircularProgressIndicator(color: Colors.black),
       );
     }
 
     if (_dolarData == null) {
-      return const Padding(
-        padding: EdgeInsets.all(20),
-        child: Text('Error al cargar cotizaciones'),
+      return Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            const Text('Error al cargar cotizaciones',
+                style: TextStyle(color: Colors.black87)),
+            const SizedBox(height: 10),
+            ElevatedButton.icon(
+              onPressed: _loadDolarData,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Reintentar'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color.fromRGBO(53, 55, 88, 1),
+                foregroundColor: Colors.amberAccent,
+              ),
+            ),
+          ],
+        ),
       );
     }
+
+    final brecha = _calcularBrecha();
 
     return Column(
       children: [
         // Cards de cotizaciones
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Row(
+        SizedBox(
+          height: 95,
+          child: ListView(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             children: [
-              Expanded(
-                child: _buildDolarCard(
-                  'Blue',
-                  _dolarData!.blue?.valueBuy ?? 0,
-                  _dolarData!.blue?.valueSell ?? 0,
-                  Colors.blue.shade700,
-                  'blue',
-                ),
+              _buildDolarCard(
+                'Blue',
+                _dolarData!.blue?.valueBuy ?? 0,
+                _dolarData!.blue?.valueSell ?? 0,
+                Colors.blue.shade700,
+                'blue',
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildDolarCard(
-                  'Oficial',
-                  _dolarData!.oficial?.valueBuy ?? 0,
-                  _dolarData!.oficial?.valueSell ?? 0,
-                  Colors.green.shade700,
-                  'oficial',
-                ),
+              const SizedBox(width: 10),
+              _buildDolarCard(
+                'Oficial',
+                _dolarData!.oficial?.valueBuy ?? 0,
+                _dolarData!.oficial?.valueSell ?? 0,
+                Colors.green.shade700,
+                'oficial',
+              ),
+              const SizedBox(width: 10),
+              _buildDolarCard(
+                'Euro Blue',
+                _dolarData!.blueEuro?.valueBuy ?? 0,
+                _dolarData!.blueEuro?.valueSell ?? 0,
+                Colors.purple.shade700,
+                'blue_euro',
+              ),
+              const SizedBox(width: 10),
+              _buildDolarCard(
+                'Euro Ofic.',
+                _dolarData!.oficialEuro?.valueBuy ?? 0,
+                _dolarData!.oficialEuro?.valueSell ?? 0,
+                Colors.teal.shade700,
+                'oficial_euro',
               ),
             ],
           ),
         ),
         const SizedBox(height: 10),
+        // Brecha
+        if (brecha > 0)
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Text(
+              'Brecha Blue vs Oficial: ${brecha.toStringAsFixed(1)}%',
+              style: GoogleFonts.montserrat(
+                textStyle: const TextStyle(
+                  color: Colors.black87,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ),
+        const SizedBox(height: 6),
         // Fecha de actualización
         Text(
-          'Actualizado: ${df.format(DateTime.parse(_dolarData!.lastUpdate!))}',
+          'Actualizado: ${_dolarData!.lastUpdate != null ? df.format(DateTime.parse(_dolarData!.lastUpdate!)) : 'N/A'}',
           style: GoogleFonts.montserrat(
             textStyle: const TextStyle(color: Colors.black54, fontSize: 12),
           ),
         ),
+        if (_isOffline)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Text(
+              'Modo offline - Mostrando datos cacheados',
+              style: GoogleFonts.montserrat(
+                textStyle: const TextStyle(
+                  color: Colors.redAccent,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -279,13 +447,13 @@ class _HomeState extends State<Home> {
       onTap: () {
         setState(() {
           _selectedDolar = type;
-          // Limpiar campos al cambiar tipo
           pesoc.clear();
           dolarc.clear();
         });
       },
       child: Container(
-        padding: const EdgeInsets.all(12),
+        width: 140,
+        padding: const EdgeInsets.all(10),
         decoration: BoxDecoration(
           color: isSelected ? color : Colors.white,
           borderRadius: BorderRadius.circular(16),
@@ -293,7 +461,7 @@ class _HomeState extends State<Home> {
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                    color: color.withOpacity(0.4),
+                    color: color.withValues(alpha: 0.4),
                     blurRadius: 8,
                     offset: const Offset(0, 4),
                   )
@@ -301,18 +469,19 @@ class _HomeState extends State<Home> {
               : null,
         ),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Text(
               title,
               style: GoogleFonts.montserrat(
                 textStyle: TextStyle(
                   color: isSelected ? Colors.white : color,
-                  fontSize: 14,
+                  fontSize: 13,
                   fontWeight: FontWeight.bold,
                 ),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceAround,
               children: [
@@ -322,14 +491,14 @@ class _HomeState extends State<Home> {
                       'Compra',
                       style: TextStyle(
                         color: isSelected ? Colors.white70 : Colors.black54,
-                        fontSize: 10,
+                        fontSize: 9,
                       ),
                     ),
                     Text(
                       '\$${compra.toStringAsFixed(0)}',
                       style: TextStyle(
                         color: isSelected ? Colors.white : Colors.black,
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -341,14 +510,14 @@ class _HomeState extends State<Home> {
                       'Venta',
                       style: TextStyle(
                         color: isSelected ? Colors.white70 : Colors.black54,
-                        fontSize: 10,
+                        fontSize: 9,
                       ),
                     ),
                     Text(
                       '\$${venta.toStringAsFixed(0)}',
                       style: TextStyle(
                         color: isSelected ? Colors.white : Colors.black,
-                        fontSize: 16,
+                        fontSize: 14,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -374,6 +543,7 @@ class _HomeState extends State<Home> {
         ),
       ),
       child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
         child: Column(
           children: [
             // Indicador de tipo seleccionado
@@ -396,9 +566,20 @@ class _HomeState extends State<Home> {
             const SizedBox(height: 20),
             _buildBotonCalcular(),
             const SizedBox(height: 20),
-            // Historial
             _buildHistorial(),
             const SizedBox(height: 20),
+            // Fuente de datos
+            TextButton.icon(
+              onPressed: () => _launchUrl('https://bluelytics.com.ar'),
+              icon: const Icon(Icons.open_in_new, size: 14, color: Colors.white54),
+              label: Text(
+                'Datos vía Bluelytics.com.ar',
+                style: GoogleFonts.montserrat(
+                  textStyle: const TextStyle(color: Colors.white54, fontSize: 11),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
             // Footer
             Center(
               child: Padding(
@@ -406,7 +587,7 @@ class _HomeState extends State<Home> {
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
                   child: Text(
-                    'rodrigo.desarrollador@gmail.com',
+                    'DolarBlue Argentina',
                     style: GoogleFonts.pacifico(
                       textStyle:
                           const TextStyle(color: Colors.white, fontSize: 16),
@@ -485,7 +666,7 @@ class _HomeState extends State<Home> {
         padding: const EdgeInsets.all(20),
         child: Text(
           'Tu historial de conversiones aparecerá aquí',
-          style: TextStyle(color: Colors.white.withOpacity(0.5)),
+          style: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
           textAlign: TextAlign.center,
         ),
       );
@@ -508,8 +689,9 @@ class _HomeState extends State<Home> {
                 ),
               ),
               TextButton(
-                onPressed: () {
+                onPressed: () async {
                   setState(() => _history.clear());
+                  await _historyService.clearHistory();
                 },
                 child: const Text(
                   'Limpiar',
@@ -533,7 +715,7 @@ class _HomeState extends State<Home> {
                 margin: const EdgeInsets.only(right: 10),
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.1),
+                  color: Colors.white.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
                 ),
                 child: Column(
@@ -552,14 +734,14 @@ class _HomeState extends State<Home> {
                     Text(
                       item.dolarType,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.7),
+                        color: Colors.white.withValues(alpha: 0.7),
                         fontSize: 11,
                       ),
                     ),
                     Text(
                       item.formattedTime,
                       style: TextStyle(
-                        color: Colors.white.withOpacity(0.5),
+                        color: Colors.white.withValues(alpha: 0.5),
                         fontSize: 10,
                       ),
                     ),
@@ -602,5 +784,25 @@ class _HomeState extends State<Home> {
         floatingLabelBehavior: FloatingLabelBehavior.auto,
       ),
     );
+  }
+
+  void _showSettings() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: const Color.fromRGBO(53, 55, 88, 1),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (context) {
+        return const SettingsBottomSheet();
+      },
+    );
+  }
+
+  Future<void> _launchUrl(String url) async {
+    final uri = Uri.parse(url);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 }

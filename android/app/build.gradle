@@ -36,6 +36,7 @@ android {
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
+        coreLibraryDesugaringEnabled true
     }
 
     kotlinOptions {
@@ -48,10 +49,10 @@ android {
 
     signingConfigs {
         release {
-            keyAlias keystoreProperties['keyAlias']
-            keyPassword keystoreProperties['keyPassword']
-            storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : null
-            storePassword keystoreProperties['storePassword']
+            keyAlias keystoreProperties['keyAlias'] ?: 'androiddebugkey'
+            keyPassword keystoreProperties['keyPassword'] ?: 'android'
+            storeFile keystoreProperties['storeFile'] ? file(keystoreProperties['storeFile']) : file("$System.env.USERPROFILE/.android/debug.keystore")
+            storePassword keystoreProperties['storePassword'] ?: 'android'
         }
     }
 
@@ -77,4 +78,6 @@ flutter {
     source '../..'
 }
 
-dependencies {}
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+}

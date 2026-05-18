@@ -1,16 +1,47 @@
-# dolarblue
+# DolarBlue - Cotización Dólar Hoy Argentina
 
-A new Flutter project.
+[![Flutter](https://img.shields.io/badge/Flutter-3.x-blue.svg)](https://flutter.dev)
+[![Dart](https://img.shields.io/badge/Dart-3.x-0175C2.svg)](https://dart.dev)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-## Getting Started
+Aplicación Flutter para consultar la cotización del dólar y euro en Argentina en tiempo real.
 
-This project is a starting point for a Flutter application.
+<p align="center">
+  <img src="flutter_01.png" width="250" />
+  <img src="flutter_02.png" width="250" />
+</p>
 
-A few resources to get you started if this is your first Flutter project:
+## Funcionalidades
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+- 💵 **Dólar Blue y Oficial** en tiempo real
+- 💶 **Euro Blue y Euro Oficial**
+- 📊 **Brecha cambiaria** entre Blue y Oficial
+- 🧮 **Calculadora** de conversión ARS ⇄ USD / EUR
+- 📋 **Historial** de conversiones persistente
+- 📤 **Compartir** cotizaciones fácilmente
+- 🌙 **Modo oscuro** por defecto
+- 🔄 **Pull-to-refresh** para actualizar datos
+- 💾 **Cacheo local** para uso offline
+- 📈 **Gráficos de evolución** del dólar (hasta 30 días)
+- 🔔 **Alertas de variación** configurables
+- 📱 **Widget de pantalla de inicio** (Android)
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Tecnologías
+
+- [Flutter](https://flutter.dev)
+- [Bluelytics API](https://bluelytics.com.ar)
+- [fl_chart](https://pub.dev/packages/fl_chart)
+- [workmanager](https://pub.dev/packages/workmanager)
+- Dart
+
+## Descarga
+
+Disponible en Google Play Store.
+
+## Desarrollador
+
+Desarrollado por Rodrigo.
+
+## Licencia
+
+MIT

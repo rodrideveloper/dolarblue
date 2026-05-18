@@ -1,0 +1,14 @@
+DolarBlue es la app más simple y rápida para consultar la cotización del dólar en Argentina.
+
+Funcionalidades principales:
+💵 Cotización en tiempo real del Dólar Blue y Dólar Oficial
+💶 Cotización del Euro Blue y Euro Oficial
+📊 Brecha porcentual entre Blue y Oficial
+🧮 Calculadora de conversión ARS ⇄ USD / EUR
+📋 Historial de conversiones guardado localmente
+📤 Compartir cotizaciones por WhatsApp, redes sociales y más
+🌙 Interfaz oscura optimizada para el uso diario
+
+Datos provistos por Bluelytics.com.ar
+
+Palabras clave: dolar hoy, cotizacion dolar argentina, dolar blue, dolar oficial, euro blue, calculadora dolar peso, cotizacion en tiempo real, dolar app, dolar blue hoy, brecha cambiaria
